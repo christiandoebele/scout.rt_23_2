@@ -114,7 +114,7 @@ public class OpenTelemetryInitializer implements IPlatformListener {
 
   protected Map<String, String> getDefaultProperties() {
     String tracesExporter = CONFIG.getPropertyValue(OpenTelemetryTracesExporterProperty.class);
-    String metricsExporter = CONFIG.getPropertyValue(OpenTelemetryDefaultExporterProperty.class);
+    String metricsExporter = CONFIG.getPropertyValue(OpenTelemetryMetricsExporterProperty.class);
     String otplExporterEndpoint = CONFIG.getPropertyValue(OpenTelemetryOtlpExporterEndpointProperty.class);
     String otlpExporterProtocol = CONFIG.getPropertyValue(OpenTelemetryOtlpExporterProtocolProperty.class);
 
@@ -197,7 +197,7 @@ public class OpenTelemetryInitializer implements IPlatformListener {
     }
   }
 
-  public static class OpenTelemetryDefaultExporterProperty extends AbstractStringConfigProperty {
+  public static class OpenTelemetryMetricsExporterProperty extends AbstractStringConfigProperty {
 
     @Override
     public String getKey() {
