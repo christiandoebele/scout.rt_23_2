@@ -25,5 +25,5 @@ export interface CalendarComponentModel extends WidgetModel {
    * Specifies, how long (in minutes) a component should appear when no toDate is specified. Default is 30 (half hour).
    * This is a GUI only property.
    */
-  defaultComponentDuration?: number;
+  defaultComponentDurationInMinutes?: number;
 }

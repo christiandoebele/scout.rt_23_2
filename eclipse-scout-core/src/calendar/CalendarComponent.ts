@@ -25,7 +25,7 @@ export class CalendarComponent extends Widget implements CalendarComponentModel 
   item: CalendarItem;
   stack: Record<string, { x?: number; w?: number }>;
   coveredDaysRange: DateRange;
-  defaultComponentDuration: number;
+  defaultComponentDurationInMinutes: number;
 
   /** @internal */
   _$parts: JQuery[];
@@ -38,7 +38,7 @@ export class CalendarComponent extends Widget implements CalendarComponentModel 
     this.fullDayIndex = -1;
     this.item = null;
     this._$parts = [];
-    this.defaultComponentDuration = 30;
+    this.defaultComponentDurationInMinutes = 60;
   }
 
   /**
@@ -57,16 +57,20 @@ export class CalendarComponent extends Widget implements CalendarComponentModel 
   }
 
   protected _initCoveredDaysRange(coveredDaysRange: JsonDateRange | DateRange) {
-    if (coveredDaysRange && coveredDaysRange.from && !coveredDaysRange.to) {
-      coveredDaysRange.to = this._calculateDefaultToDate(coveredDaysRange.from);
-    } else if (!coveredDaysRange) {
-      coveredDaysRange = new DateRange(dates.ensure(this.fromDate), this.getUiToDate());
+    if (!coveredDaysRange || !coveredDaysRange.from) {
+      coveredDaysRange = new DateRange(dates.ensure(this.fromDate));
     }
+    if (!coveredDaysRange.to) {
+      coveredDaysRange.to = this.toDate || coveredDaysRange.from;
+    }
+    coveredDaysRange.from = dates.trunc(dates.ensure(coveredDaysRange.from));
+    coveredDaysRange.to = dates.trunc(dates.ensure(coveredDaysRange.to));
+
     this._setProperty('coveredDaysRange', DateRange.ensure(coveredDaysRange));
   }
 
   /**
-   * When no toDate is provided, add the {@link defaultComponentDuration} to the start date
+   * When no toDate is provided, add the {@link defaultComponentDurationInMinutes} to the start date
    * to get the default toDate which is shown in the UI.
    */
   getUiToDate(): Date {
@@ -278,7 +282,12 @@ export class CalendarComponent extends Widget implements CalendarComponentModel 
 
   protected _calculateDefaultToDate(fromDate: string | Date = this.fromDate) {
     fromDate = dates.ensure(fromDate);
-    fromDate.setMinutes(fromDate.getMinutes() + this.defaultComponentDuration);
+    let newMinutes = fromDate.getMinutes() + this.defaultComponentDurationInMinutes;
+    if (fromDate.getHours() === 23 && newMinutes >= 60) {
+      // Make impossible to overlap into next day
+      newMinutes = 59;
+    }
+    fromDate.setMinutes(newMinutes);
     return fromDate;
   }
 

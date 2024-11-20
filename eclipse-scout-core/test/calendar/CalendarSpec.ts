@@ -561,11 +561,8 @@ describe('Calendar', () => {
     });
 
     describe('with empty toDate', () => {
-
       let fromDate1 = '2016-07-20 13:00:00.000';
-      let toDate1 = '2016-07-20 13:30:00.000';
-      let fromDate2 = '2016-07-20 16:00:00.000';
-      let toDate2 = '2016-07-20 16:30:00.000';
+      let toDate1 = '2016-07-20 14:00:00.000';
 
       it('should throw no error when creating', () => {
         // Arrange
@@ -580,22 +577,6 @@ describe('Calendar', () => {
         expect(uiToDate).toEqual(dates.ensure(toDate1));
       });
 
-      it('should initialize coveredDaysRange correctly', () => {
-        // Arrange
-        let comp1 = scout.create(CalendarComponent, {parent: cal, fromDate: fromDate1});
-        let comp2 = scout.create(CalendarComponent, {parent: cal, fromDate: fromDate2, coveredDaysRange: {from: fromDate2, to: null}});
-
-        // Act
-        let range1 = comp1.coveredDaysRange;
-        let range2 = comp2.coveredDaysRange;
-
-        // Assert
-        expect(range1.from).toEqual(dates.ensure(fromDate1));
-        expect(range1.to).toEqual(dates.ensure(toDate1));
-        expect(range2.from).toEqual(dates.ensure(fromDate2));
-        expect(range2.to).toEqual(dates.ensure(toDate2));
-      });
-
       it('should respect modified default duration', () => {
         // Arrange
         let defaultDurationMinutes = 15;
@@ -603,7 +584,7 @@ describe('Calendar', () => {
         let comp = scout.create(CalendarComponent, {
           parent: cal,
           fromDate: fromDate1,
-          defaultComponentDuration: defaultDurationMinutes
+          defaultComponentDurationInMinutes: defaultDurationMinutes
         });
 
         // Act
@@ -612,8 +593,76 @@ describe('Calendar', () => {
 
         // Assert
         expect(uiToDate).toEqual(dates.ensure(expectedEndDate));
-        expect(range.from).toEqual(dates.ensure(fromDate1));
-        expect(range.to).toEqual(dates.ensure(expectedEndDate));
+        expect(range.from).toEqual(dates.trunc(dates.ensure(fromDate1)));
+        expect(range.to).toEqual(dates.trunc(dates.ensure(expectedEndDate)));
+      });
+    });
+
+    describe('coveredDaysRange', () => {
+      it('should be truncated start and end date', () => {
+        // Arrange
+        let fromDate = '2016-07-20 13:00:00.000';
+        let toDate = '2016-07-20 15:45:00.000';
+        let comp = scout.create(CalendarComponent, {parent: cal, fromDate: fromDate, toDate: toDate});
+
+        // Act
+        let range = comp.coveredDaysRange;
+
+        // Assert
+        expect(range.from).toEqual(dates.trunc(dates.ensure(fromDate)));
+        expect(range.to).toEqual(dates.trunc(dates.ensure(toDate)));
+      });
+
+      it('should correctly span over several days', () => {
+        // Arrange
+        let fromDate = '2016-07-20 13:00:00.000';
+        let toDate = '2016-07-21 12:30:00.000';
+        let comp = scout.create(CalendarComponent, {parent: cal, fromDate: fromDate, toDate: toDate});
+
+        // Act
+        let range = comp.coveredDaysRange;
+
+        // Assert
+        expect(range.from).toEqual(dates.trunc(dates.ensure(fromDate)));
+        expect(range.to).toEqual(dates.trunc(dates.ensure(toDate)));
+      });
+
+      it('should initialize correctly when not toDate is provided', () => {
+        // Arrange
+        let date1 = '2016-07-20 13:00:00.000';
+        let date1Trunc = dates.trunc(dates.ensure(date1));
+        let date2 = '2016-07-21 16:00:00.000';
+        let date2Trunc = dates.trunc(dates.ensure(date2));
+
+        let comp1 = scout.create(CalendarComponent, {parent: cal, fromDate: date1});
+        let comp2 = scout.create(CalendarComponent, {parent: cal, fromDate: date2, coveredDaysRange: {from: date2, to: null}});
+
+        // Act
+        let range1 = comp1.coveredDaysRange;
+        let range2 = comp2.coveredDaysRange;
+
+        // Assert
+        expect(range1.from).toEqual(dates.ensure(date1Trunc));
+        expect(range1.to).toEqual(dates.ensure(date1Trunc));
+        expect(range2.from).toEqual(dates.ensure(date2Trunc));
+        expect(range2.to).toEqual(dates.ensure(date2Trunc));
+      });
+
+      it('should initialize correctly when at end of day', () => {
+        // Arrange
+        let startDate = '2016-07-25 23:30:00.000';
+        let expectedEndDate = '2016-07-25 23:59:00.000';
+        let startDateTrunc = '2016-07-25 00:00:00.000';
+        let comp = scout.create(CalendarComponent, {parent: cal, fromDate: startDate});
+
+        // Act
+        let uiToDate = comp.getUiToDate();
+        let range = comp.coveredDaysRange;
+
+        // Assert
+        expect(uiToDate).toEqual(dates.ensure(expectedEndDate));
+        expect(range.from).toEqual(dates.trunc(dates.ensure(startDate)));
+        expect(range.to).toEqual(dates.ensure(startDateTrunc));
       });
     });
   });
