@@ -57,8 +57,11 @@ export class CalendarComponent extends Widget implements CalendarComponentModel 
   }
 
   protected _initCoveredDaysRange(coveredDaysRange: JsonDateRange | DateRange) {
-    if (!coveredDaysRange || !coveredDaysRange.from) {
-      coveredDaysRange = new DateRange(dates.ensure(this.fromDate));
+    if (!coveredDaysRange) {
+      coveredDaysRange = new DateRange();
+    }
+    if (!coveredDaysRange.from) {
+      coveredDaysRange.from = this.fromDate;
     }
     if (!coveredDaysRange.to) {
       coveredDaysRange.to = this.toDate || coveredDaysRange.from;
@@ -282,13 +285,17 @@ export class CalendarComponent extends Widget implements CalendarComponentModel 
 
   protected _calculateDefaultToDate(fromDate: string | Date = this.fromDate) {
     fromDate = dates.ensure(fromDate);
+    let toDate = new Date(fromDate);
     let newMinutes = fromDate.getMinutes() + this.defaultComponentDurationInMinutes;
-    if (fromDate.getHours() === 23 && newMinutes >= 60) {
-      // Make impossible to overlap into next day
-      newMinutes = 59;
+    toDate.setMinutes(toDate.getMinutes() + newMinutes);
+
+    // Should not overlap into next day
+    if (dates.trunc(fromDate).getTime() !== dates.trunc(toDate).getTime()) {
+      toDate = new Date(fromDate);
+      toDate.setHours(23);
+      toDate.setMinutes(59);
     }
-    fromDate.setMinutes(newMinutes);
-    return fromDate;
+    return toDate;
   }
 
   getPartDayPosition(day: Date): Range {

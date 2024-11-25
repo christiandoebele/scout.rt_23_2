@@ -664,6 +664,23 @@ describe('Calendar', () => {
         expect(range.from).toEqual(dates.trunc(dates.ensure(startDate)));
         expect(range.to).toEqual(dates.ensure(startDateTrunc));
       });
+
+      it('should let uiToDate not overlap into the next day', () => {
+        // Arrange
+        let startDate = '2016-07-25 22:30:00.000';
+        let expectedEndDate = '2016-07-25 23:59:00.000';
+        let startDateTrunc = '2016-07-25 00:00:00.000';
+        let comp = scout.create(CalendarComponent, {parent: cal, fromDate: startDate, defaultComponentDurationInMinutes: 120});
+
+        // Act
+        let uiToDate = comp.getUiToDate();
+        let range = comp.coveredDaysRange;
+
+        // Assert
+        expect(uiToDate).toEqual(dates.ensure(expectedEndDate));
+        expect(range.from).toEqual(dates.trunc(dates.ensure(startDate)));
+        expect(range.to).toEqual(dates.ensure(startDateTrunc));
+      });
     });
   });
 
