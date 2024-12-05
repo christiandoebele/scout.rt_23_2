@@ -97,7 +97,7 @@ export class Tree extends Widget implements TreeModel, Filterable<TreeNode> {
   /** contains all parents of a selected node, the selected node and the first level children */
   protected _inSelectionPathList: Record<string, boolean>;
   protected _scrollDirections: ScrollDirection;
-  protected _changeNodeTaskScheduled: boolean;
+  protected _changedNodes: Set<TreeNode>;
   protected _$mouseDownNode: JQuery;
 
   constructor() {
@@ -148,7 +148,7 @@ export class Tree extends Widget implements TreeModel, Filterable<TreeNode> {
     this._filterMenusHandler = this._filterMenus.bind(this);
     this._popupOpenHandler = this._onDesktopPopupOpen.bind(this);
     this._inSelectionPathList = {};
-    this._changeNodeTaskScheduled = false;
+    this._changedNodes = null;
     this.viewRangeRendered = new Range(0, 0);
     this.viewRangeSize = 20;
     this.startAnimationFunc = function() {
@@ -928,6 +928,49 @@ export class Tree extends Widget implements TreeModel, Filterable<TreeNode> {
         node.height = node.$node.outerHeight(true);
       }
     });
+  }
+
+  protected _updateNodeSizes(nodes: TreeNode[]) {
+    // The measuring is separated into 3 blocks for performance reasons -> separates reading and setting of styles
+    // 1. Prepare style for measuring
+    if (this.isHorizontalScrollingEnabled()) {
+      nodes.forEach(node => {
+        node.$node.css('width', 'auto');
+        node.$node.css('display', 'inline-block');
+      });
+    }
+
+    // 2. Measure
+    nodes.forEach(node => {
+      node.height = node.$node.outerHeight(true);
+      if (!this.isHorizontalScrollingEnabled()) {
+        return;
+      }
+      let newWidth = node.$node.outerWidth();
+      let oldWidth = node.width ? node.width : 0;
+      if (oldWidth === this.maxNodeWidth && newWidth < this.maxNodeWidth) {
+        this.maxNodeWidth = 0;
+        this.nodeWidthDirty = true;
+      } else if (newWidth > this.maxNodeWidth) {
+        this.maxNodeWidth = newWidth;
+        this.nodeWidthDirty = true;
+      } else if (newWidth === oldWidth && newWidth === 0) {
+        // newWidth and oldWidth are 0: this might be because the tree is invisible while a node is added:
+        // Mark as dirty to update the width later during layouting (when the tree gets visible and the width is available)
+        this.nodeWidthDirty = true;
+      }
+      node.width = newWidth;
+    });
+
+    // 3. Reset style
+    if (this.isHorizontalScrollingEnabled()) {
+      nodes.forEach(node => {
+        if (!this.nodeWidthDirty) {
+          node.$node.css('width', this.maxNodeWidth);
+        }
+        node.$node.css('display', '');
+      });
+    }
   }
 
   removeAllNodes() {
@@ -2394,15 +2437,6 @@ export class Tree extends Widget implements TreeModel, Filterable<TreeNode> {
       updatedNodes.push(oldNode);
     });
 
-    // recompute node size if horizontal scrolling is enabled
-    if (this.isHorizontalScrollingEnabled()) {
-      let nodesToResize = updatedNodes.filter(n => n.rendered);
-      if (arrays.hasElements(nodesToResize)) {
-        this._updateNodeSize(nodesToResize);
-        this.invalidateLayoutTree();
-      }
-    }
-
     this.trigger('nodesUpdated', {
       nodes: updatedNodes
     });
@@ -3175,54 +3209,7 @@ export class Tree extends Widget implements TreeModel, Filterable<TreeNode> {
       node.attached = true;
       return true;
     });
-    this._installNodes(nodes);
-  }
-
-  protected _installNodes(nodes: TreeNode[]) {
-    this._updateNodeSize(nodes);
-  }
-
-  protected _updateNodeSize(nodes: TreeNode[]) {
-    // The measuring is separated into 3 blocks for performance reasons -> separates reading and setting of styles
-    // 1. Prepare style for measuring
-    if (this.isHorizontalScrollingEnabled()) {
-      nodes.forEach(node => {
-        node.$node.css('width', 'auto');
-        node.$node.css('display', 'inline-block');
-      });
-    }
-
-    // 2. Measure
-    nodes.forEach(node => {
-      node.height = node.$node.outerHeight(true);
-      if (!this.isHorizontalScrollingEnabled()) {
-        return;
-      }
-      let newWidth = node.$node.outerWidth();
-      let oldWidth = node.width ? node.width : 0;
-      if (oldWidth === this.maxNodeWidth && newWidth < this.maxNodeWidth) {
-        this.maxNodeWidth = 0;
-        this.nodeWidthDirty = true;
-      } else if (newWidth > this.maxNodeWidth) {
-        this.maxNodeWidth = newWidth;
-        this.nodeWidthDirty = true;
-      } else if (newWidth === oldWidth && newWidth === 0) {
-        // newWidth and oldWidth are 0: this might be because the tree is invisible while a node is added:
-        // Mark as dirty to update the width later during layouting (when the tree gets visible and the width is available)
-        this.nodeWidthDirty = true;
-      }
-      node.width = newWidth;
-    });
-
-    // 3. Reset style
-    if (this.isHorizontalScrollingEnabled()) {
-      nodes.forEach(node => {
-        if (!this.nodeWidthDirty) {
-          node.$node.css('width', this.maxNodeWidth);
-        }
-        node.$node.css('display', '');
-      });
-    }
+    this._updateNodeSizes(nodes);
   }
 
   /**
@@ -3441,30 +3428,77 @@ export class Tree extends Widget implements TreeModel, Filterable<TreeNode> {
     this._showContextMenu(event);
   }
 
-  changeNode(node: TreeNode) {
+  changeNode(nodeToUpdate: ObjectOrModel<TreeNode>) {
+    let node = this.nodesMap[nodeToUpdate.id];
+    if (!node) {
+      throw new Error('Node cannot be found for id: ' + nodeToUpdate.id);
+    }
+
+    let widthDirty =
+      // If same instance has been changed, nodes cannot be compared
+      node === nodeToUpdate
+      // Otherwise check for changes that could influence node width
+      || node.text !== nodeToUpdate.text
+      || node.iconId !== nodeToUpdate.iconId
+      || node.cssClass !== nodeToUpdate.cssClass
+      || node.htmlEnabled !== nodeToUpdate.htmlEnabled
+      || node.font !== nodeToUpdate.font;
+
+    node.text = nodeToUpdate.text;
+    node.cssClass = nodeToUpdate.cssClass;
+    node.iconId = nodeToUpdate.iconId;
+    node.tooltipText = nodeToUpdate.tooltipText;
+    node.foregroundColor = nodeToUpdate.foregroundColor;
+    node.backgroundColor = nodeToUpdate.backgroundColor;
+    node.font = nodeToUpdate.font;
+    node.htmlEnabled = nodeToUpdate.htmlEnabled;
+
     this.applyFiltersForNode(node);
     if (this.rendered) {
       node._decorate();
+
+      // Width only needs to be updated if horizontal scrolling is enabled
+      widthDirty = widthDirty && this.isHorizontalScrollingEnabled();
+
       // The padding size of a node depends on whether the node or the parent node has an icon, see _computeNodePaddingLeftForLevel
       // Unfortunately, we cannot easily detect whether the icon has changed or not.
       // However, the padding calculation only needs to be done if the node that toggles the icon is visible and expanded or has an expanded parent.
       let paddingDirty = !!this.nodePaddingLevelDiffParentHasIcon && !!this.visibleNodesMap[node.id] && (node.expanded || !!node.parentNode);
-      if (paddingDirty && !this._changeNodeTaskScheduled) {
+      if ((widthDirty || paddingDirty) && !this._changedNodes) {
+        // TODO CGU this does not work, only the first call queues the task, maybe use an object for this._changedNodes and set dirty flags on that object
+        // TODO CGU why did I write "Unfortunately, we cannot easily detect whether the icon has changed or not." ? Is it possible now?
         // Because the change node event is not batch capable, performance would slow down if many change node events are processed
         // To mitigate this, the updating is done later
         queueMicrotask(() => {
-          this._changeNodeTaskScheduled = false;
-          if (!this.rendered) {
-            return;
+          try {
+            this._nodesChanged(this._changedNodes, paddingDirty, widthDirty);
+          } finally {
+            this._changedNodes = null;
           }
-          this._updateNodePaddingsLeft();
         });
-        this._changeNodeTaskScheduled = true;
+        this._changedNodes = new Set<TreeNode>();
+      }
+      if (this._changedNodes) {
+        this._changedNodes.add(node);
       }
     }
     this.trigger('nodeChanged', {
       node: node
     });
+  }
+
+  protected _nodesChanged(changedNodes: Set<TreeNode>, paddingDirty: boolean, widthDirty: boolean) {
+    if (!this.rendered) {
+      return;
+    }
+    if (paddingDirty) {
+      this._updateNodePaddingsLeft();
+    }
+    if (widthDirty) {
+      let nodes = Array.from(this._changedNodes.values()).filter(node => node.rendered);
+      this._updateNodeSizes(nodes);
+      this.invalidateLayoutTree();
+    }
   }
 
   // same as on Table.prototype._onDesktopPopupOpen

@@ -599,6 +599,7 @@ describe('Tree', () => {
       });
     });
 
+    // TODO CGU move to changeNode spec
     it('updates node size', () => {
       tree.render();
 

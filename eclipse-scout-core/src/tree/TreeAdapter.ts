@@ -227,19 +227,11 @@ export class TreeAdapter extends ModelAdapter {
   }
 
   protected _onNodeChanged(nodeId: string, cell: RemoteEvent & CellModel) {
-    let node = this.widget.nodesMap[nodeId];
-
     defaultValues.applyTo(cell, 'TreeNode');
-    node.text = cell.text;
-    node.cssClass = cell.cssClass;
-    node.iconId = cell.iconId;
-    node.tooltipText = cell.tooltipText;
-    node.foregroundColor = cell.foregroundColor;
-    node.backgroundColor = cell.backgroundColor;
-    node.font = cell.font;
-    node.htmlEnabled = cell.htmlEnabled;
-
-    this.widget.changeNode(node);
+    this.widget.changeNode({
+      id: nodeId,
+      ...cell
+    });
   }
 
   protected _onNodesChecked(nodes: { id: string; checked: boolean }[]) {
