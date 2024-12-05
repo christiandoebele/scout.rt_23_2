@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2023 BSI Business Systems Integration AG
+ * Copyright (c) 2010, 2024 BSI Business Systems Integration AG
  *
  * This program and the accompanying materials are made
  * available under the terms of the Eclipse Public License 2.0
@@ -24,6 +24,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
+import org.eclipse.scout.rt.dataobject.fixture.CleanableEntityFixtureDo;
 import org.eclipse.scout.rt.dataobject.fixture.CollectionFixtureDo;
 import org.eclipse.scout.rt.dataobject.fixture.EntityFixtureDo;
 import org.eclipse.scout.rt.dataobject.fixture.ListEntityContributionFixtureDo;
@@ -411,6 +412,40 @@ public class DataObjectHelperTest {
     assertFalse(testObj.otherEntities().get(1).id().exists());
     assertTrue(testObj.otherEntities().get(1).nestedOtherEntity().exists());
     assertFalse(testObj.otherEntities().get(1).nestedOtherEntity().get().id().exists());
+  }
+
+  @Test
+  public void testCleanOfCleanableObjects() {
+    EntityFixtureDo testObj = BEANS.get(CleanableEntityFixtureDo.class)
+        .withId(null)
+        .withOtherEntity(BEANS.get(OtherEntityFixtureDo.class)
+            .withId(null)
+            .withItems())
+        .withOtherEntities( // Other entities are marked as cleanable -> should be removed
+            BEANS.get(OtherEntityFixtureDo.class)
+                .withId("test"));
+
+    assertTrue(testObj.id().exists());
+
+    assertTrue(testObj.otherEntity().exists());
+    assertTrue(testObj.otherEntity().get().id().exists());
+    assertTrue(testObj.otherEntity().get().items().exists());
+    assertEquals(0, testObj.otherEntity().get().items().size());
+
+    assertTrue(testObj.otherEntities().exists());
+    assertEquals(1, testObj.otherEntities().get().size());
+
+    assertNotNull(testObj.otherEntities().get(0));
+    assertTrue(testObj.otherEntities().get(0).id().exists());
+    assertFalse(testObj.otherEntities().get(0).items().exists());
+    assertEquals(0, testObj.otherEntities().get(0).items().size());
+
+    m_helper.clean(testObj);
+
+    assertFalse(testObj.id().exists());
+    assertFalse(testObj.otherEntity().exists());
+    assertFalse(testObj.otherEntities().exists());
+    assertTrue(testObj.isEmpty());
   }
 
   @Test

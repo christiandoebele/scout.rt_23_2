@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2023 BSI Business Systems Integration AG
+ * Copyright (c) 2010, 2024 BSI Business Systems Integration AG
  *
  * This program and the accompanying materials are made
  * available under the terms of the Eclipse Public License 2.0
@@ -22,6 +22,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import org.eclipse.scout.rt.platform.ApplicationScoped;
@@ -303,20 +304,22 @@ public class DataObjectHelper {
 
     @Override
     protected void caseDoEntity(IDoEntity entity) {
-      // (1) clean all nodes of entity
+      Predicate<DoNode<?>> cleanablePredicate = getCleanablePredicate(entity);
+
+      // (1) Clean do values
       Set<DoNode<?>> emptyNodes = new HashSet<>();
       for (DoNode<?> node : entity.allNodes().values()) {
-        // (1a) clean null values
-        if (node instanceof DoValue && node.get() == null) {
+        // (1a) Clean do values and do list
+        if (cleanablePredicate.test(node)) {
           emptyNodes.add(node);
         }
-        // (1b) clean empty collections (i.e. DoCollection, DoList, DoSet)
-        else if (node instanceof IDoCollection && ((IDoCollection) node).isEmpty()) {
-          emptyNodes.add(node);
-        }
-        // (1c) clean nested DoEntities
+        // (1b) Clean nested entities
         else {
           caseDoEntityNode(node);
+          // Remove node if it is empty after clean
+          if (node.get() instanceof IDoEntity && ((IDoEntity) node.get()).isEmpty()) {
+            emptyNodes.add(node);
+          }
         }
       }
       entity.removeIf(emptyNodes::contains);
@@ -324,6 +327,25 @@ public class DataObjectHelper {
       // (2) clean all contributions (i.e. itself implementations of DoEntity)
       caseDoEntityContributions(entity.getContributions());
     }
+
+    protected Predicate<DoNode<?>> getCleanablePredicate(IDoEntity entity) {
+      if (entity instanceof ICleanableDataObject) {
+        return ((ICleanableDataObject) entity)::isNodeCleanable;
+      }
+      return BEANS.get(DataObjectHelper.class)::isNodeCleanable;
+    }
+  }
+
+  protected boolean isNodeCleanable(DoNode<?> node) {
+    // (1) clean null values
+    if (node instanceof DoValue && node.get() == null) {
+      return true;
+    }
+    // (1b) clean empty collections (i.e. DoCollection, DoList, DoSet)
+    if (node instanceof IDoCollection && ((IDoCollection) node).isEmpty()) {
+      return true;
+    }
+    return false;
   }
 
   /**
