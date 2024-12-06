@@ -419,6 +419,43 @@ public class DataObjectHelperTest {
     EntityFixtureDo testObj = BEANS.get(CleanableEntityFixtureDo.class)
         .withId(null)
         .withOtherEntity(BEANS.get(OtherEntityFixtureDo.class)
+            .withId("test")
+            .withItems())
+        .withOtherEntities( // Other entities are marked as cleanable -> should be removed
+            BEANS.get(OtherEntityFixtureDo.class)
+                .withId("test"));
+
+    assertTrue(testObj.id().exists());
+
+    assertTrue(testObj.otherEntity().exists());
+    assertTrue(testObj.otherEntity().get().id().exists());
+    assertTrue(testObj.otherEntity().get().items().exists());
+    assertEquals(0, testObj.otherEntity().get().items().size());
+
+    assertTrue(testObj.otherEntities().exists());
+    assertEquals(1, testObj.otherEntities().get().size());
+
+    assertNotNull(testObj.otherEntities().get(0));
+    assertTrue(testObj.otherEntities().get(0).id().exists());
+    assertFalse(testObj.otherEntities().get(0).items().exists());
+    assertEquals(0, testObj.otherEntities().get(0).items().size());
+
+    m_helper.clean(testObj);
+
+    assertFalse(testObj.id().exists());
+
+    assertTrue(testObj.otherEntity().exists());
+    assertTrue(testObj.getOtherEntity().id().exists());
+    assertFalse(testObj.getOtherEntity().items().exists());
+
+    assertFalse(testObj.otherEntities().exists());
+  }
+
+  @Test
+  public void testCompleteCleanOfCleanableObjects() {
+    EntityFixtureDo testObj = BEANS.get(CleanableEntityFixtureDo.class)
+        .withId(null)
+        .withOtherEntity(BEANS.get(OtherEntityFixtureDo.class)
             .withId(null)
             .withItems())
         .withOtherEntities( // Other entities are marked as cleanable -> should be removed

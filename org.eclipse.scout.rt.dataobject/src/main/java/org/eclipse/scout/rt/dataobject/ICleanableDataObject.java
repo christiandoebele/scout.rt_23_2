@@ -13,6 +13,13 @@ import org.eclipse.scout.rt.platform.BEANS;
 
 public interface ICleanableDataObject {
 
+  /**
+   * Returns true, if the provided node has no relevant value and can be removed from the json structure.
+   *
+   * @param node
+   *     the node to be checked
+   * @return true when the node can be cleaned
+   */
   default boolean isNodeCleanable(DoNode<?> node) {
     return BEANS.get(DataObjectHelper.class).isNodeCleanable(node);
   }
