@@ -24,6 +24,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
+import org.eclipse.scout.rt.dataobject.fixture.CleanableEntityFixtureContributionDo;
 import org.eclipse.scout.rt.dataobject.fixture.CleanableEntityFixtureDo;
 import org.eclipse.scout.rt.dataobject.fixture.CollectionFixtureDo;
 import org.eclipse.scout.rt.dataobject.fixture.EntityFixtureDo;
@@ -421,7 +422,7 @@ public class DataObjectHelperTest {
         .withOtherEntity(BEANS.get(OtherEntityFixtureDo.class)
             .withId("test")
             .withItems())
-        .withOtherEntities( // Other entities are marked as cleanable -> should be removed
+        .withOtherEntities( // Other entities are marked as cleanable by the implementation of ICleanableDataObject -> should be removed in all cases
             BEANS.get(OtherEntityFixtureDo.class)
                 .withId("test"));
 
@@ -458,7 +459,7 @@ public class DataObjectHelperTest {
         .withOtherEntity(BEANS.get(OtherEntityFixtureDo.class)
             .withId(null)
             .withItems())
-        .withOtherEntities( // Other entities are marked as cleanable -> should be removed
+        .withOtherEntities( // Other entities are marked as cleanable by the implementation of ICleanableDataObject -> should be removed in all cases
             BEANS.get(OtherEntityFixtureDo.class)
                 .withId("test"));
 
@@ -483,6 +484,33 @@ public class DataObjectHelperTest {
     assertFalse(testObj.otherEntity().exists());
     assertFalse(testObj.otherEntities().exists());
     assertTrue(testObj.isEmpty());
+  }
+
+  @Test
+  public void testCompleteCleanOfCleanableContributions() {
+    EntityFixtureDo testObj = BEANS.get(CleanableEntityFixtureDo.class)
+        .withId(null);
+
+    testObj
+        .contribution(CleanableEntityFixtureContributionDo.class)
+        .withId(null)
+        .withOtherEntity(BEANS.get(OtherEntityFixtureDo.class)
+            .withId("test"));
+
+    assertTrue(testObj.id().exists());
+    assertFalse(testObj.otherEntity().exists());
+    assertFalse(testObj.otherEntities().exists());
+
+    assertTrue(testObj.hasContributions());
+    assertTrue(testObj.hasContribution(CleanableEntityFixtureContributionDo.class));
+
+    m_helper.clean(testObj);
+
+    assertFalse(testObj.id().exists());
+
+    assertTrue(testObj.hasContributions());
+    assertNotNull(testObj.getContribution(CleanableEntityFixtureContributionDo.class));
+    assertTrue(testObj.getContribution(CleanableEntityFixtureContributionDo.class).isEmpty());
   }
 
   @Test
