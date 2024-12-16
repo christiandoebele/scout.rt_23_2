@@ -57,8 +57,14 @@ public class UnloadRequestHandler extends AbstractUiServletRequestHandler {
   protected void handleUnloadRequest(HttpServletRequest req, HttpServletResponse resp, String uiSessionId) {
     LOG.info("Unloading UI session with ID {} (requested by UI)", uiSessionId);
 
-    final HttpSession httpSession = req.getSession();
-    final ISessionStore sessionStore = BEANS.get(HttpSessionHelper.class).getSessionStore(httpSession);
+    final HttpSession httpSession = req.getSession(false);
+    if (httpSession == null) {
+      return;
+    }
+    final ISessionStore sessionStore = BEANS.get(HttpSessionHelper.class).optSessionStore(httpSession);
+    if (sessionStore == null) {
+      return;
+    }
     IUiSession uiSession = sessionStore.getUiSession(uiSessionId);
 
     if (uiSession != null) {

@@ -11,6 +11,7 @@ package org.eclipse.scout.rt.server.commons.authentication;
 
 import java.io.IOException;
 import java.security.Principal;
+import java.util.regex.Pattern;
 
 import javax.security.auth.Subject;
 import jakarta.servlet.FilterChain;
@@ -52,6 +53,8 @@ import org.eclipse.scout.rt.platform.util.StringUtility;
  */
 public class TrivialAccessController implements IAccessController {
 
+  private static final Pattern UNLOAD_PATH_PATTERN = Pattern.compile("^/unload/(.+)$");
+
   private TrivialAuthConfig m_config;
 
   public TrivialAccessController init(final TrivialAuthConfig config) {
@@ -63,6 +66,14 @@ public class TrivialAccessController implements IAccessController {
   public boolean handle(final HttpServletRequest request, final HttpServletResponse response, final FilterChain chain) throws IOException, ServletException {
     if (!m_config.isEnabled()) {
       return false;
+    }
+
+    if (isUnloadRequest(request) && !isAuthenticatedRequest(request)) {
+      // Unload requests are handled by the {@code UnloadRequestHandler}.
+      // The unload request is supposed to close a UI session by the browser. If the current session is not authenticated then there is no session to unload.
+      // Answering the unauthenticated unload request here prevents saml or oidc filters to produce unwanted redirect urls after authentication (we want to avoid the /unload/ url as redirect url).
+      response.sendError(HttpServletResponse.SC_FORBIDDEN);
+      return true;
     }
 
     switch (getTarget(request)) {
@@ -106,6 +117,7 @@ public class TrivialAccessController implements IAccessController {
     }
 
     // Is running within a valid subject?
+    // Keep logic in sync with TrivialAccessController.isAuthenticatedRequest(HttpServletRequest).
     if (helper.isRunningWithValidSubject(request)) {
       if (helper.redirectAfterLogin(request, response, helper)) {
         return true;
@@ -115,6 +127,7 @@ public class TrivialAccessController implements IAccessController {
     }
 
     // Is already authenticated?
+    // Keep logic in sync with TrivialAccessController.isAuthenticatedRequest(HttpServletRequest).
     final Principal principal = helper.findPrincipal(request, m_config.getPrincipalProducer());
     if (principal != null) {
       if (m_config.getPrincipalVerifier() != null && !m_config.getPrincipalVerifier().verify(principal)) {
@@ -253,5 +266,31 @@ public class TrivialAccessController implements IAccessController {
       m_loginPageInstalled = loginPageInstalled;
       return this;
     }
+  }
+
+  /**
+   * Verify if the request is a browser /unload/ request. Unload requests are handled by {@code UnloadRequestHandler}.
+   */
+  protected boolean isUnloadRequest(final HttpServletRequest request) {
+    return UNLOAD_PATH_PATTERN.matcher(getTarget(request)).matches();
+  }
+
+  protected boolean isAuthenticatedRequest(final HttpServletRequest request) {
+    // Is running within a valid subject?
+    // Keep logic in sync with TrivialAccessController.handleRequest(HttpServletRequest, HttpServletResponse, FilterChain).
+    if (BEANS.get(ServletFilterHelper.class).isRunningWithValidSubject(request)) {
+      return true;
+    }
+
+    // Is already authenticated?
+    // Keep logic in sync with TrivialAccessController.handleRequest(HttpServletRequest, HttpServletResponse, FilterChain).
+    final Principal principal = BEANS.get(ServletFilterHelper.class).findPrincipal(request, m_config.getPrincipalProducer());
+    if (principal == null) {
+      return false;
+    }
+    if (m_config.m_principalVerifier == null) {
+      return true;
+    }
+    return m_config.m_principalVerifier.verify(principal);
   }
 }

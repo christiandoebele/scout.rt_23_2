@@ -443,7 +443,7 @@ public class SessionStore implements ISessionStore, HttpSessionBindingListener {
 
   @Override
   public void valueBound(HttpSessionBindingEvent event) {
-    // ignore notifications about being bound to an HTTP session
+    Assertions.assertTrue(m_httpSessionValid, "Binding to an invalid session is not supported.");
   }
 
   @Override
