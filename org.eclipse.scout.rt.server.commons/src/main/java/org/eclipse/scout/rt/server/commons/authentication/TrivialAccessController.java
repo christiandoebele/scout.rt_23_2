@@ -11,9 +11,10 @@ package org.eclipse.scout.rt.server.commons.authentication;
 
 import java.io.IOException;
 import java.security.Principal;
-import java.util.regex.Pattern;
 
+import javax.annotation.Nonnull;
 import javax.security.auth.Subject;
+
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,6 +25,8 @@ import org.eclipse.scout.rt.platform.BEANS;
 import org.eclipse.scout.rt.platform.security.IPrincipalProducer;
 import org.eclipse.scout.rt.platform.security.IPrincipalVerifier;
 import org.eclipse.scout.rt.platform.security.SimplePrincipalProducer;
+import org.eclipse.scout.rt.platform.util.Assertions;
+import org.eclipse.scout.rt.platform.util.ObjectUtility;
 import org.eclipse.scout.rt.platform.util.StringUtility;
 
 /**
@@ -53,8 +56,6 @@ import org.eclipse.scout.rt.platform.util.StringUtility;
  */
 public class TrivialAccessController implements IAccessController {
 
-  private static final Pattern UNLOAD_PATH_PATTERN = Pattern.compile("^/unload/(.+)$");
-
   private TrivialAuthConfig m_config;
 
   public TrivialAccessController init(final TrivialAuthConfig config) {
@@ -68,15 +69,16 @@ public class TrivialAccessController implements IAccessController {
       return false;
     }
 
-    if (isUnloadRequest(request) && !isAuthenticatedRequest(request)) {
+    ServletFilterHelper helper = BEANS.get(ServletFilterHelper.class);
+    if (helper.isUnloadRequest(request) && !isAuthenticatedRequest(request)) {
       // Unload requests are handled by the {@code UnloadRequestHandler}.
       // The unload request is supposed to close a UI session by the browser. If the current session is not authenticated then there is no session to unload.
-      // Answering the unauthenticated unload request here prevents saml or oidc filters to produce unwanted redirect urls after authentication (we want to avoid the /unload/ url as redirect url).
+      // Answering the unauthenticated unload request here prevents other controllers (e.g. saml or oidc) to produce unwanted redirect urls after authentication (we want to avoid the /unload/ url as redirect url).
       response.sendError(HttpServletResponse.SC_FORBIDDEN);
       return true;
     }
 
-    switch (getTarget(request)) {
+    switch (helper.getTarget(request)) {
       case "/login":
         if (m_config.isHandleAuthentication()) {
           handleLoginRequest(request, response);
@@ -116,9 +118,9 @@ public class TrivialAccessController implements IAccessController {
       return true;
     }
 
+    final AuthenticationStatus authenticationStatus = getAuthenticationStatus(request);
     // Is running within a valid subject?
-    // Keep logic in sync with TrivialAccessController.isAuthenticatedRequest(HttpServletRequest).
-    if (helper.isRunningWithValidSubject(request)) {
+    if (AuthenticationStatusType.SUBJECT_VALID == authenticationStatus.getStatus()) {
       if (helper.redirectAfterLogin(request, response, helper)) {
         return true;
       }
@@ -127,16 +129,14 @@ public class TrivialAccessController implements IAccessController {
     }
 
     // Is already authenticated?
-    // Keep logic in sync with TrivialAccessController.isAuthenticatedRequest(HttpServletRequest).
-    final Principal principal = helper.findPrincipal(request, m_config.getPrincipalProducer());
-    if (principal != null) {
-      if (m_config.getPrincipalVerifier() != null && !m_config.getPrincipalVerifier().verify(principal)) {
-        return false;
-      }
+    if (AuthenticationStatusType.PRINCIPAL_INVALID == authenticationStatus.getStatus()) {
+      return false;
+    }
+    if (AuthenticationStatusType.PRINCIPAL_VALID == authenticationStatus.getStatus()) {
       if (helper.redirectAfterLogin(request, response, helper)) {
         return true;
       }
-      helper.continueChainAsSubject(principal, request, response, chain);
+      helper.continueChainAsSubject(authenticationStatus.getPrincipal(), request, response, chain);
       return true;
     }
 
@@ -170,16 +170,6 @@ public class TrivialAccessController implements IAccessController {
     if (m_config.isLoginPageInstalled()) {
       BEANS.get(ServletFilterHelper.class).forwardToLogoutForm(request, response);
     }
-  }
-
-  protected String getTarget(final HttpServletRequest request) {
-    final String pathInfo = request.getPathInfo();
-    if (pathInfo != null) {
-      return pathInfo;
-    }
-
-    final String requestURI = request.getRequestURI();
-    return requestURI.substring(requestURI.lastIndexOf('/'));
   }
 
   /**
@@ -269,28 +259,81 @@ public class TrivialAccessController implements IAccessController {
   }
 
   /**
-   * Verify if the request is a browser /unload/ request. Unload requests are handled by {@code UnloadRequestHandler}.
+   * Checks if the request is authenticated by either a valid subject or a valid principal.
+   *
+   * @param request
+   *     Http request
+   * @return {@code true} if request is authenticated. Otherwise {@code false}.
    */
-  protected boolean isUnloadRequest(final HttpServletRequest request) {
-    return UNLOAD_PATH_PATTERN.matcher(getTarget(request)).matches();
+  protected boolean isAuthenticatedRequest(HttpServletRequest request) {
+    return ObjectUtility.isOneOf(getAuthenticationStatus(request).getStatus(), AuthenticationStatusType.SUBJECT_VALID, AuthenticationStatusType.PRINCIPAL_VALID);
   }
 
-  protected boolean isAuthenticatedRequest(final HttpServletRequest request) {
+  /**
+   * Gets the authentication status of the http request.
+   * <br/><br/>
+   * Possible status are:
+   * <ul>
+   *   <li><b>'{@code AuthenticationStatusType.NONE}'</b>: No authentication.</li>
+   *   <li><b>'{@code AuthenticationStatusType.SUBJECT_VALID}'</b>: Authenticated by valid subject.</li>
+   *   <li><b>'{@code AuthenticationStatusType.PRINCIPAL_INVALID}'</b>: No authentication but invalid principal.</li>
+   *   <li><b>'{@code AuthenticationStatusType.PRINCIPAL_VALID}'</b>: Authenticated by valid principal.</li>
+   * </ul>
+   * <p>
+   * In case of a status '{@code AuthenticationStatusType.PRINCIPAL_INVALID}' or '{@code AuthenticationStatusType.PRINCIPAL_INVALID}' the found principal is provided too.
+   *
+   * @param request
+   *     Http request
+   * @return Authentication status
+   */
+  @Nonnull
+  protected AuthenticationStatus getAuthenticationStatus(HttpServletRequest request) {
     // Is running within a valid subject?
-    // Keep logic in sync with TrivialAccessController.handleRequest(HttpServletRequest, HttpServletResponse, FilterChain).
     if (BEANS.get(ServletFilterHelper.class).isRunningWithValidSubject(request)) {
-      return true;
+      return new AuthenticationStatus(AuthenticationStatusType.SUBJECT_VALID);
     }
 
     // Is already authenticated?
-    // Keep logic in sync with TrivialAccessController.handleRequest(HttpServletRequest, HttpServletResponse, FilterChain).
     final Principal principal = BEANS.get(ServletFilterHelper.class).findPrincipal(request, m_config.getPrincipalProducer());
     if (principal == null) {
-      return false;
+      return new AuthenticationStatus(AuthenticationStatusType.NONE);
     }
     if (m_config.m_principalVerifier == null) {
-      return true;
+      return new AuthenticationStatus(AuthenticationStatusType.PRINCIPAL_VALID, principal);
     }
-    return m_config.m_principalVerifier.verify(principal);
+    return new AuthenticationStatus(m_config.m_principalVerifier.verify(principal) ? AuthenticationStatusType.PRINCIPAL_VALID : AuthenticationStatusType.PRINCIPAL_INVALID, principal);
+  }
+
+  protected enum AuthenticationStatusType {
+    NONE,
+    SUBJECT_VALID,
+    PRINCIPAL_VALID,
+    PRINCIPAL_INVALID
+  }
+
+  protected class AuthenticationStatus {
+    private final AuthenticationStatusType m_status;
+    private final Principal m_principal;
+
+    public AuthenticationStatus(AuthenticationStatusType status) {
+      Assertions.assertNotNull(status);
+      m_status = status;
+      m_principal = null;
+    }
+
+    public AuthenticationStatus(AuthenticationStatusType status, Principal principal) {
+      Assertions.assertNotNull(status);
+      Assertions.assertNotNull(principal);
+      m_status = status;
+      m_principal = principal;
+    }
+
+    public Principal getPrincipal() {
+      return m_principal;
+    }
+
+    public AuthenticationStatusType getStatus() {
+      return m_status;
+    }
   }
 }
